@@ -4,6 +4,9 @@ import datetime
 dbconn = sqlite3.connect('laundry.db')
 cur = dbconn.cursor()
 price = 5
+wash_dry_cost = 3
+material_cost = 0.5
+commission = 0.5
 
 def create_user(room, building, PUID=None, fname=None, lname=None, email=None):
     query = '''
@@ -40,6 +43,24 @@ def check_job_in_queue(job_id):
     else:
         return False
 
+def check_job_in_active(job_id):
+    query = '''
+    SELECT * FROM active_job WHERE id = ?
+    '''
+    cur.execute(query, (job_id,))
+    resp = cur.fetchall()
+    if len(resp) > 0:
+        return True
+    else:
+        return False
+
+def get_job_bags(status, job_id):
+    query = '''
+    SELECT bags FROM ? WHERE id = ?
+    '''
+    cur.execute(query, (status, job_id))
+    return cur.fetchall()[0][0]
+
 def get_user_balance(user_id):
     query = '''
     SELECT balance FROM credit WHERE user=?
@@ -54,6 +75,15 @@ def debit_balance(user_id, debit):
     SET balance = ? WHERE user = ?
     '''
     cur.execute(query, (current_balance - debit, user_id))
+    dbconn.commit()
+
+def add_balance(user_id, credit):
+    current_balance = get_user_balance(user_id)
+    query = '''
+    UPDATE credit
+    SET balance = ? WHERE user = ?
+    '''
+    cur.execute(query, (current_balance + credit, user_id))
     dbconn.commit()
 
 def charge_requester(job_id):
@@ -103,6 +133,40 @@ def start_job(user_id, job_id):
     charge_requester(cur.lastrowid)
     cur.execute("DELETE FROM pending_job WHERE id = ?", (job_id,))
     dbconn.commit()
+
+
+def calculate_pay_from_bags(bags):
+    total_price = bags * price
+    washer_fee = bags * wash_dry_cost
+    soap_overhead = bags * material_cost
+    worker_pay = washer_fee + soap_overhead + (bags * commission)
+    laundrygig_pay = bags * commission
+
+    return (worker_pay, laundrygig_pay)
+
+
+def end_job(job_id):
+    if not check_job_in_active(job_id):
+        return False
+
+    # copy active into completed
+    query = '''
+    INSERT INTO completed_job(requester, worker, bags, request_time, start_time, load_charge)
+    SELECT a.requester, a.worker, a.bags, a.request_time, a.start_time, a.load_charge FROM active_job a
+    WHERE a.id = ?
+    '''
+    cur.execute(query, (job_id,))
+    dbconn.commit()
+
+    bags = get_job_bags('completed_job', cur.lastrowid)
+
+    # update end_time, gig pay, commission
+    query = '''
+    UPDATE completed_job
+    SET end_time = ?, gig_pay = ?, commission = ?
+    WHERE id = ?
+    '''
+
 
 
 
