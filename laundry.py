@@ -9,6 +9,17 @@ material_cost = 0.5
 commission = 0.5
 
 def create_user(room, building, PUID=None, fname=None, lname=None, email=None):
+    """Creates a new user in the person database
+
+    Args:
+        room (Integer): The room number of the resident
+        building (String): The Purdue standard abbreviation for the res hall
+        PUID (String, optional): PUID of person. Defaults to None.
+        fname (String, optional): first name. Defaults to None.
+        lname (String, optional): Last name. Defaults to None.
+        email (String, optional): purdue email. Defaults to None.
+    """    
+
     query = '''
     INSERT INTO person(room, building, puid, fname, lname, email)
     VALUES(?, ?, ?, ?, ?, ?)
@@ -166,7 +177,5 @@ def end_job(job_id):
     SET end_time = ?, gig_pay = ?, commission = ?
     WHERE id = ?
     '''
-
-
 
 
