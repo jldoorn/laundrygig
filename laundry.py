@@ -29,6 +29,17 @@ def check_user_exists(user_id):
     else:
         return False
 
+def check_job_in_queue(job_id):
+    query = '''
+    SELECT * FROM pending_job WHERE id = ?
+    '''
+    cur.execute(query, (job_id,))
+    resp = cur.fetchall()
+    if len(resp) > 0:
+        return True
+    else:
+        return False
+
 def get_user_balance(user_id):
     query = '''
     SELECT balance FROM credit WHERE user=?
@@ -36,6 +47,23 @@ def get_user_balance(user_id):
     cur.execute(query, (user_id,))
     return cur.fetchall()[0][0]
 
+def debit_balance(user_id, debit):
+    current_balance = get_user_balance(user_id)
+    query = '''
+    UPDATE credit
+    SET balance = ? WHERE user = ?
+    '''
+    cur.execute(query, (current_balance - debit, user_id))
+    dbconn.commit()
+
+def charge_requester(job_id):
+    query = '''
+    SELECT requester, bags FROM active_job WHERE id = ?
+    '''
+    cur.execute(query, (job_id,))
+    ret = cur.fetchall()[0]
+    debit_balance(ret[0], price * ret[1])
+    return True
 
 # multiple jobs could be submitted with insufficient funds
 # think about incentives (bribes?) to get load done quicker
@@ -54,3 +82,27 @@ def new_job(user_id, num_bags):
     cur.execute(query, (user_id, num_bags, int(datetime.datetime.now().timestamp())))
     dbconn.commit()
     return True
+
+def start_job(user_id, job_id):
+    if not check_job_in_queue(job_id):
+        return False
+    
+    query = '''
+    INSERT INTO active_job(requester, bags, request_time)
+    SELECT p.requester, p.bags, p.request_time FROM pending_job p
+    WHERE p.id = ?
+    '''
+    cur.execute(query, (job_id,))
+    dbconn.commit()
+    query = '''
+    UPDATE active_job
+    SET worker = ?, start_time = ?, load_charge = ?
+    WHERE id = ?
+    '''
+    cur.execute(query, (user_id, int(datetime.datetime.now().timestamp()), price, cur.lastrowid))
+    charge_requester(cur.lastrowid)
+    cur.execute("DELETE FROM pending_job WHERE id = ?", (job_id,))
+    dbconn.commit()
+
+
+
